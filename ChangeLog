@@ -1,5 +1,6 @@
 20040906
  - (djm) NetFlow v.5 support, largely from ben AT tilderoot.com
+ - (djm) Release pfflowd-0.6
 
 20040712
  - (djm) Import af-independent host/port parsing code from softflowd, allowing
@@ -9,7 +10,7 @@
 20040506
  - (djm) Change license to simplified ISC license, update copyright year
  - (djm) Tidy README
- - (djm) Release pfflowd-0.4
+ - (djm) Release pfflowd-0.5
 
 20040415
  - (djm) Fix uninitialised getsockopt len
