@@ -5,10 +5,17 @@
     states whose labels match
     - What to do if ruleset changes under us?
 
+* NetFlow v.5 support
+  - A few extra fields
+  - Very easy
+
+* NetFlow v.9 export
+  - Supports IPv6!
+
 * sflow export (www.sflow.org)
 
 * IPv6 export support
-  - Needs sflow, as Netflow doesn't do IPv6
+  - Needs sflow or NetFlow v.9
 
 * Cleanup of code
   - Kill globals in favour of ctxt
@@ -20,4 +27,16 @@
 * More netflow fields
   - Most require kernel support
   - May be able to (partially) infer tcp flags
+
+* Companion daemon which reads from pflog to log blocked/dropped packets
+  (maybe)
+
+* Kernel support for reporting state counter wraparound
+  - Check counters on kernel side
+  - Upon receipt of a packet which would cause either flow counter to wrap,
+    send a (new) pfsync info message with the state data
+  - Reset state's counters to zero + len of current packet
+
+* Kernel changes to account for generated packets
+  - Which ones? ICMP is arguably not appropriate...
 
