@@ -11,6 +11,7 @@
 
 * NetFlow v.9 export
   - Supports IPv6!
+  - http://www.cisco.com/warp/public/cc/pd/iosw/prodlit/tflow_wp.htm
 
 * sflow export (www.sflow.org)
 
