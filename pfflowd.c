@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.9 2004/02/16 03:30:46 djm Exp $ */
+/* $Id: pfflowd.c,v 1.10 2004/03/15 00:52:30 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -281,7 +281,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 	u_int8_t packet[NF1_MAXPACKET_SIZE];	/* Maximum allowed packet size (24 flows) */
 	struct NF1_HEADER *hdr = NULL;
 	struct NF1_FLOW *flw = NULL;
-	int j, offset, num_packets;
+	int j, offset, num_packets, err;
+	socklen_t errsz;
 
 	if (phdr->caplen < PFSYNC_HDRLEN) {
 		syslog(LOG_WARNING, "Runt pfsync packet header");
@@ -330,8 +331,13 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			if (verbose_flag)
 				syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
 			hdr->flows = htons(hdr->flows);
-			if (send(netflow_socket, packet, (size_t)offset, 0) == -1)
-				return;
+			getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
+			    &err, &errsz); /* Clear ICMP errors */
+			if (send(netflow_socket, packet,
+			    (size_t)offset, 0) == -1) {
+				syslog(LOG_DEBUG, "send: %s", strerror(errno));
+				return;	
+			}
 			j = 0;
 			num_packets++;
 		}
@@ -436,8 +442,12 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		if (verbose_flag)
 			syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
 		hdr->flows = htons(hdr->flows);
-		if (send(netflow_socket, packet, (size_t)offset, 0) == -1)
-			return;
+		getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
+		    &err, &errsz); /* Clear ICMP errors */
+		if (send(netflow_socket, packet, (size_t)offset, 0) == -1) {
+			syslog(LOG_DEBUG, "send: %s", strerror(errno));
+			return;	
+		}
 		num_packets++;
 	}
 

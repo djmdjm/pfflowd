@@ -1,4 +1,8 @@
-20030216
+20040315
+ - (djm) Clear socket errors before send(), stops pfflowd dropping packets 
+   when it receives ICMP errors
+
+20040216
  - (djm) Make this work with -current pfsync
  - (djm) Add support for older pfsync (<=3.4) with -DOLD_PFSYNC flag
  - (djm) Release pfflowd-0.4
