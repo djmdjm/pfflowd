@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.10 2004/03/15 00:52:30 djm Exp $ */
+/* $Id: pfflowd.c,v 1.11 2004/03/15 00:53:31 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -317,9 +317,9 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		u_int32_t bytes_in, bytes_out;
 		u_int32_t packets_in, packets_out;
 		char src_s[64], dst_s[64], pbuf[16], creation_s[64];
-		time_t creation;
+		time_t creation_tt;
+		u_int32_t creation;
 		struct tm creation_tm;
-		struct timeval creation_tv;
 
 		off = sizeof(*ph) + (sizeof(*st) * i);
 		if (off + sizeof(*st) > phdr->caplen) {
@@ -357,9 +357,9 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			continue; /* XXX IPv6 support */
 
 		/* Copy/convert only what we can eat */
-		creation = now - ntohl(st->creation);
-		creation_tv.tv_sec = creation;
-		creation_tv.tv_usec = 0;
+		creation = ntohl(st->creation) * 1000;
+		if (creation > uptime_ms)
+			creation = uptime_ms; /* Avoid u_int wrap */
 
 		if (st->direction == PF_OUT) {
 			memcpy(&src, &st->lan, sizeof(src));
@@ -378,8 +378,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			flw->dest_port = dst.port;
 			flw->flow_packets = st->packets[0];
 			flw->flow_octets = st->bytes[0];
-			flw->flow_start = htonl(timeval_sub_ms(&creation_tv, &start_time));
-			flw->flow_finish = htonl(timeval_sub_ms(&now_tv, &start_time));
+			flw->flow_start = htonl(uptime_ms - creation);
+			flw->flow_finish = htonl(uptime_ms);
 			flw->protocol = st->proto;
 			flw->tcp_flags = 0;
 			offset += sizeof(*flw);
@@ -394,8 +394,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			flw->dest_port = src.port;
 			flw->flow_packets = st->packets[1];
 			flw->flow_octets = st->bytes[1];
-			flw->flow_start = htonl(timeval_sub_ms(&creation_tv, &start_time));
-			flw->flow_finish = htonl(timeval_sub_ms(&now_tv, &start_time));
+			flw->flow_start = htonl(uptime_ms - creation);
+			flw->flow_finish = htonl(uptime_ms);
 			flw->protocol = st->proto;
 			flw->tcp_flags = 0;
 			offset += sizeof(*flw);
@@ -410,7 +410,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			bytes_out = ntohl(st->bytes[0]);
 			bytes_in = ntohl(st->bytes[1]);
 
-			localtime_r(&creation, &creation_tm);
+			creation_tt = now - (creation / 1000);
+			localtime_r(&creation_tt, &creation_tm);
 			strftime(creation_s, sizeof(creation_s), 
 			    "%Y-%m-%dT%H:%M:%S", &creation_tm);
 
@@ -429,8 +430,9 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 
 			syslog(LOG_DEBUG, "FLOW proto %d direction %d", 
 			    st->proto, st->direction);
-			syslog(LOG_DEBUG, "\tstart %s finish %s",
-			    creation_s, now_s);
+			syslog(LOG_DEBUG, "\tstart %s(%u) finish %s(%u)",
+			    creation_s, uptime_ms - creation, 
+			    now_s, uptime_ms);
 			syslog(LOG_DEBUG, "\t%s -> %s %d bytes %d packets",
 			    src_s, dst_s, bytes_out, packets_out);
 			syslog(LOG_DEBUG, "\t%s -> %s %d bytes %d packets",

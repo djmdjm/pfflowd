@@ -1,6 +1,8 @@
 20040315
  - (djm) Clear socket errors before send(), stops pfflowd dropping packets 
    when it receives ICMP errors
+ - (djm) Fix flow_start and flow_finish computation. These should be 
+   relative to SysUptime, not epoch. Spotted by Niels Provos
 
 20040216
  - (djm) Make this work with -current pfsync
