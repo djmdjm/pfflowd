@@ -1,4 +1,4 @@
-.\" $Id: pfflowd.8,v 1.5 2004/03/15 03:35:47 djm Exp $
+.\" $Id: pfflowd.8,v 1.6 2004/09/06 12:25:57 djm Exp $
 .\"
 .\" Copyright (c) 2003 Damien Miller.  All rights reserved.
 .\"
@@ -31,10 +31,11 @@
 .Sh SYNOPSIS
 .Nm pfflowd
 .Op Fl dDh
-.Op Fl i Ar interface
-.Op Fl r Ar pcap_file
-.Op Fl n Ar host:port
 .Op Fl S Ar direction
+.Op Fl i Ar interface
+.Op Fl n Ar host:port
+.Op Fl r Ar pcap_file
+.Op Fl v Ar netflow_version
 .Op bpf_program
 .Sh DESCRIPTION
 .Nm
@@ -99,6 +100,17 @@ will process the whole capture file and then exit. One would normally use
 the 
 .Fl d
 flag to keep the process in the foreground in this mode.
+.It Fl v Ar netflow_version
+Select which version of the NetFlow protocol that 
+.Nm
+should send.
+Currently,
+.Nm
+support NetFlow versions
+.Ar 1
+and 
+.Ar 5 .
+The default is to send NetFlow v.5 datagrams.
 .It Fl d
 Specify that 
 .Nm

@@ -1,3 +1,6 @@
+20040906
+ - (djm) NetFlow v.5 support, largely from ben AT tilderoot.com
+
 20040712
  - (djm) Import af-independent host/port parsing code from softflowd, allowing
    IPv6 flow export

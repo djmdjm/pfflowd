@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.17 2004/07/12 04:34:27 djm Exp $ */
+/* $Id: pfflowd.c,v 1.18 2004/09/06 12:25:57 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -42,59 +42,14 @@
 #include <unistd.h>
 #include <util.h>
 #include <netdb.h>
+#include "pfflowd.h"
 
-#define	PROGNAME		"pfflowd"
-#define	PROGVER			"0.5"
-
-#ifndef PRIVDROP_USER
-# define PRIVDROP_USER		"nobody"
-#endif
-
-#define PRIVDROP_CHROOT_DIR	"/var/empty"
-
-#define DEFAULT_INTERFACE	"pfsync0"
-#define LIBPCAP_SNAPLEN		2020	/* Default MTU */
-
-#ifdef OLD_PFSYNC
-# define _PFSYNC_STATE		pf_state
-# define _PFSYNC_VER		1
-#else
-# define _PFSYNC_STATE		pfsync_state
-# define _PFSYNC_VER		2
-#endif
-
-static int verbose_flag = 0;		/* Debugging flag */
-static struct timeval start_time;	/* "System boot" time, for SysUptime */
-static int netflow_socket = -1;
-static int direction = 0;
-
-/*
- * This is the Cisco Netflow(tm) version 1 packet format
- * Based on:
- * http://www.cisco.com/univercd/cc/td/doc/product/rtrmgmt/nfc/nfc_3_0/nfc_ug/nfcform.htm
- */
-struct NF1_HEADER {
-	u_int16_t version, flows;
-	u_int32_t uptime_ms, time_sec, time_nanosec;
-};
-struct NF1_FLOW {
-	u_int32_t src_ip, dest_ip, nexthop_ip;
-	u_int16_t if_index_in, if_index_out;
-	u_int32_t flow_packets, flow_octets;
-	u_int32_t flow_start, flow_finish;
-	u_int16_t src_port, dest_port;
-	u_int16_t pad1;
-	u_int8_t protocol, tos, tcp_flags;
-	u_int8_t pad2, pad3, pad4;
-	u_int32_t reserved1;
-#if 0
- 	u_int8_t reserved2; /* XXX: no longer used */
-#endif
-};
-/* Maximum of 24 flows per packet */
-#define NF1_MAXFLOWS		24
-#define NF1_MAXPACKET_SIZE	(sizeof(struct NF1_HEADER) + \
-				 (NF1_MAXFLOWS * sizeof(struct NF1_FLOW)))
+static int verbose_flag = 0;            /* Debugging flag */
+static struct timeval start_time;       /* "System boot" time, for SysUptime */
+static int netflow_socket = -1;		/* Send socket */
+static int direction = 0;		/* Filter for direction */
+static u_int export_version = 5;	/* Currently v.1 and v.5 supported */
+static u_int32_t flows_exported = 0;	/* Used for v.5 header */
 
 /* 
  * Drop privileges and chroot, will exit on failure
@@ -152,6 +107,7 @@ usage(void)
 	fprintf(stderr, "  -S direction    Generation flows for \"in\" or \"out\" bound states (default any)\n");
 	fprintf(stderr, "  -d              Don't daemonise\n");
 	fprintf(stderr, "  -D              Debug mode: don't daemonise + verbosity\n");
+	fprintf(stderr, "  -v              NetFlow export packet version (default %d)\n", export_version);
 	fprintf(stderr, "  -h              Display this help\n");
 	fprintf(stderr, "\n");
 }
@@ -222,6 +178,10 @@ parse_hostport(const char *s, struct sockaddr *addr, socklen_t *len)
 		fprintf(stderr, "No addresses found for %s:%s\n", host, port);
 		exit(1);
 	}
+	if (res->ai_addrlen > *len) {
+		fprintf(stderr, "Address too long\n");
+		exit(1);
+	}
 	memcpy(addr, res->ai_addr, res->ai_addrlen);
 	free(orig);
 	*len = res->ai_addrlen;
@@ -231,16 +191,16 @@ parse_hostport(const char *s, struct sockaddr *addr, socklen_t *len)
  * Return a connected socket to the specified address
  */
 static int
-connsock(struct sockaddr_storage *addr, socklen_t len)
+connsock(struct sockaddr *addr, socklen_t len)
 {
 	int s;
 
-	if ((s = socket(addr->ss_family, SOCK_DGRAM, 0)) == -1) {
+	if ((s = socket(addr->sa_family, SOCK_DGRAM, 0)) == -1) {
 		fprintf(stderr, "socket() error: %s\n", 
 		    strerror(errno));
 		exit(1);
 	}
-	if (connect(s, (struct sockaddr*)addr, len) == -1) {
+	if (connect(s, addr, len) == -1) {
 		fprintf(stderr, "connect() error: %s\n",
 		    strerror(errno));
 		exit(1);
@@ -268,43 +228,19 @@ format_pf_host(char *buf, size_t n, struct pf_state_host *h, sa_family_t af)
 		strlcpy(buf, err, n);
 }
 
-/*
- * Per-packet callback function from libpcap. 
- */
-static void
-packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr, 
-    const u_char *pkt)
+static int
+send_netflow_v1(const struct _PFSYNC_STATE *st, u_int n, int *flows_exp)
 {
-	const struct pfsync_header *ph;
-	int i;
-	size_t off;
-	time_t now;
-	struct tm now_tm;
-	struct timeval now_tv;
 	char now_s[64];
-	u_int32_t uptime_ms;
-	u_int8_t packet[NF1_MAXPACKET_SIZE];	/* Maximum allowed packet size (24 flows) */
-	struct NF1_HEADER *hdr = NULL;
-	struct NF1_FLOW *flw = NULL;
-	int j, offset, num_packets, err;
+	int i, j, offset, num_packets, err;
 	socklen_t errsz;
-
-	if (phdr->caplen < PFSYNC_HDRLEN) {
-		syslog(LOG_WARNING, "Runt pfsync packet header");
-		return;
-	}
-
-	ph = (const struct pfsync_header*)pkt;
-
-	if (ph->version != _PFSYNC_VER) {
-		syslog(LOG_WARNING, "Unsupported pfsync version %d, skipping",
-		    ph->version);
-		/* XXX - exit */
-		return;
-	}
-
-	if (ph->action != PFSYNC_ACT_DEL)
-		return;
+	struct NF1_FLOW *flw = NULL;
+	struct NF1_HEADER *hdr = NULL;
+	struct timeval now_tv;
+	struct tm now_tm;
+	time_t now;
+	u_int32_t uptime_ms;
+	u_int8_t packet[NF1_MAXPACKET_SIZE];
 
 	if (verbose_flag) {
 		now = time(NULL);
@@ -316,8 +252,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 	uptime_ms = timeval_sub_ms(&now_tv, &start_time);
 
 	hdr = (struct NF1_HEADER *)packet;
-	for(num_packets = offset = j = i = 0; i < ph->count; i++) {
-		const struct _PFSYNC_STATE *st;
+	for(num_packets = offset = j = i = 0; i < n; i++) {
 		struct pf_state_host src, dst;
 		u_int32_t bytes_in, bytes_out;
 		u_int32_t packets_in, packets_out;
@@ -326,15 +261,11 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		u_int32_t creation;
 		struct tm creation_tm;
 
-		off = sizeof(*ph) + (sizeof(*st) * i);
-		if (off + sizeof(*st) > phdr->caplen) {
-			syslog(LOG_WARNING, "Runt pfsync packet");
-			return;
-		}
-
 		if (netflow_socket != -1 && j >= NF1_MAXFLOWS - 1) {
-			if (verbose_flag)
-				syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
+			if (verbose_flag) {
+				syslog(LOG_DEBUG,
+				    "Sending flow packet len = %d", offset);
+			}
 			hdr->flows = htons(hdr->flows);
 			errsz = sizeof(err);
 			getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
@@ -342,7 +273,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			if (send(netflow_socket, packet,
 			    (size_t)offset, 0) == -1) {
 				syslog(LOG_DEBUG, "send: %s", strerror(errno));
-				return;	
+				return -1;
 			}
 			j = 0;
 			num_packets++;
@@ -358,52 +289,51 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			offset = sizeof(*hdr);
 		}
 
-		st = (const struct _PFSYNC_STATE *)(pkt + off);
-		if (st->af != AF_INET)
-			continue; /* XXX IPv6 support */
-		if (direction != 0 && st->direction != direction)
+		if (st[i].af != AF_INET)
 			continue;
+		if (direction != 0 && st[i].direction != direction)
+			continue;
+
 		/* Copy/convert only what we can eat */
-		creation = ntohl(st->creation) * 1000;
+		creation = ntohl(st[i].creation) * 1000;
 		if (creation > uptime_ms)
 			creation = uptime_ms; /* Avoid u_int wrap */
 
-		if (st->direction == PF_OUT) {
-			memcpy(&src, &st->lan, sizeof(src));
-			memcpy(&dst, &st->ext, sizeof(dst));
+		if (st[i].direction == PF_OUT) {
+			memcpy(&src, &st[i].lan, sizeof(src));
+			memcpy(&dst, &st[i].ext, sizeof(dst));
 		} else {
-			memcpy(&src, &st->ext, sizeof(src));
-			memcpy(&dst, &st->lan, sizeof(dst));
+			memcpy(&src, &st[i].ext, sizeof(src));
+			memcpy(&dst, &st[i].lan, sizeof(dst));
 		}
 
-		/* XXX - IPv4 only for now */
 		flw = (struct NF1_FLOW *)(packet + offset);
-		if (netflow_socket != -1 && st->packets[0] != 0) {
+		if (netflow_socket != -1 && st[i].packets[0] != 0) {
 			flw->src_ip = src.addr.v4.s_addr;
 			flw->dest_ip = dst.addr.v4.s_addr;
 			flw->src_port = src.port;
 			flw->dest_port = dst.port;
-			flw->flow_packets = st->packets[0];
-			flw->flow_octets = st->bytes[0];
+			flw->flow_packets = st[i].packets[0];
+			flw->flow_octets = st[i].bytes[0];
 			flw->flow_start = htonl(uptime_ms - creation);
 			flw->flow_finish = htonl(uptime_ms);
-			flw->protocol = st->proto;
+			flw->protocol = st[i].proto;
 			flw->tcp_flags = 0;
 			offset += sizeof(*flw);
 			j++;
 			hdr->flows++;
 		}
 		flw = (struct NF1_FLOW *)(packet + offset);
-		if (netflow_socket != -1 && st->packets[1] != 0) {
+		if (netflow_socket != -1 && st[i].packets[1] != 0) {
 			flw->src_ip = dst.addr.v4.s_addr;
 			flw->dest_ip = src.addr.v4.s_addr;
 			flw->src_port = dst.port;
 			flw->dest_port = src.port;
-			flw->flow_packets = st->packets[1];
-			flw->flow_octets = st->bytes[1];
+			flw->flow_packets = st[i].packets[1];
+			flw->flow_octets = st[i].bytes[1];
 			flw->flow_start = htonl(uptime_ms - creation);
 			flw->flow_finish = htonl(uptime_ms);
-			flw->protocol = st->proto;
+			flw->protocol = st[i].proto;
 			flw->tcp_flags = 0;
 			offset += sizeof(*flw);
 			j++;
@@ -412,22 +342,22 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		flw = (struct NF1_FLOW *)(packet + offset);
 
 		if (verbose_flag) {
-			packets_out = ntohl(st->packets[0]);
-			packets_in = ntohl(st->packets[1]);
-			bytes_out = ntohl(st->bytes[0]);
-			bytes_in = ntohl(st->bytes[1]);
+			packets_out = ntohl(st[i].packets[0]);
+			packets_in = ntohl(st[i].packets[1]);
+			bytes_out = ntohl(st[i].bytes[0]);
+			bytes_in = ntohl(st[i].bytes[1]);
 
 			creation_tt = now - (creation / 1000);
 			localtime_r(&creation_tt, &creation_tm);
 			strftime(creation_s, sizeof(creation_s), 
 			    "%Y-%m-%dT%H:%M:%S", &creation_tm);
 
-			format_pf_host(src_s, sizeof(src_s), &src, st->af);
-			format_pf_host(dst_s, sizeof(dst_s), &dst, st->af);
-			inet_ntop(st->af, &st->rt_addr, rt_s, sizeof(rt_s));
+			format_pf_host(src_s, sizeof(src_s), &src, st[i].af);
+			format_pf_host(dst_s, sizeof(dst_s), &dst, st[i].af);
+			inet_ntop(st[i].af, &st[i].rt_addr, rt_s, sizeof(rt_s));
 
-			if (st->proto == IPPROTO_TCP || 
-			    st->proto == IPPROTO_UDP) {
+			if (st[i].proto == IPPROTO_TCP || 
+			    st[i].proto == IPPROTO_UDP) {
 				snprintf(pbuf, sizeof(pbuf), ":%d", 
 				    ntohs(src.port));
 				strlcat(src_s, pbuf, sizeof(src_s));
@@ -436,10 +366,10 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 				strlcat(dst_s, pbuf, sizeof(dst_s));
 			}
 
-			syslog(LOG_DEBUG, "IFACE %s\n", st->ifname); 
-			syslog(LOG_DEBUG, "GWY %s\n", rt_s); 
+			syslog(LOG_DEBUG, "IFACE %s", st[i].ifname); 
+			syslog(LOG_DEBUG, "GWY %s", rt_s); 
 			syslog(LOG_DEBUG, "FLOW proto %d direction %d", 
-			    st->proto, st->direction);
+			    st[i].proto, st[i].direction);
 			syslog(LOG_DEBUG, "\tstart %s(%u) finish %s(%u)",
 			    creation_s, uptime_ms - creation, 
 			    now_s, uptime_ms);
@@ -451,17 +381,247 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 	}
 	/* Send any leftovers */
 	if (netflow_socket != -1 && j != 0) {
-		if (verbose_flag)
-			syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
+		if (verbose_flag) {
+			syslog(LOG_DEBUG, "Sending flow packet len = %d",
+			    offset);
+		}
 		hdr->flows = htons(hdr->flows);
 		errsz = sizeof(err);
 		getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
 		    &err, &errsz); /* Clear ICMP errors */
 		if (send(netflow_socket, packet, (size_t)offset, 0) == -1) {
 			syslog(LOG_DEBUG, "send: %s", strerror(errno));
-			return;	
+			return -1;
 		}
 		num_packets++;
+	}
+
+	return (ntohs(hdr->flows));
+}
+
+static int
+send_netflow_v5(const struct _PFSYNC_STATE *st, u_int n, int *flows_exp)
+{
+	char now_s[64];
+	int i, j, offset, num_packets, err;
+	socklen_t errsz;
+	struct NF5_FLOW *flw = NULL;
+	struct NF5_HEADER *hdr = NULL;
+	struct timeval now_tv;
+	struct tm now_tm;
+	time_t now;
+	u_int32_t uptime_ms;
+	u_int8_t packet[NF5_MAXPACKET_SIZE];
+
+	if (verbose_flag) {
+		now = time(NULL);
+		localtime_r(&now, &now_tm);
+		strftime(now_s, sizeof(now_s), "%Y-%m-%dT%H:%M:%S", &now_tm);
+	}
+
+	gettimeofday(&now_tv, NULL);
+	uptime_ms = timeval_sub_ms(&now_tv, &start_time);
+
+	hdr = (struct NF5_HEADER *)packet;
+	for(num_packets = offset = j = i = 0; i < n; i++) {
+		struct pf_state_host src, dst;
+		u_int32_t bytes_in, bytes_out, packets_in, packets_out;
+		u_int32_t creation;
+		char src_s[64], dst_s[64], rt_s[64], pbuf[16], creation_s[64];
+		time_t creation_tt;
+		struct tm creation_tm;
+
+		if (netflow_socket != -1 && j >= NF5_MAXFLOWS - 1) {
+			if (verbose_flag) {
+				syslog(LOG_DEBUG,
+				    "Sending flow packet len = %d", offset);
+			}
+			hdr->flows = htons(hdr->flows);
+			errsz = sizeof(err);
+			getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
+			    &err, &errsz); /* Clear ICMP errors */
+			if (send(netflow_socket, packet,
+			    (size_t)offset, 0) == -1) {
+				syslog(LOG_DEBUG, "send: %s", strerror(errno));
+				return -1;
+			}
+			j = 0;
+			num_packets++;
+		}
+
+		if (netflow_socket != -1 && j == 0) {
+			memset(&packet, '\0', sizeof(packet));
+			hdr->version = htons(5);
+			hdr->flows = 0; /* Filled in as we go */
+			hdr->uptime_ms = htonl(uptime_ms);
+			hdr->time_sec = htonl(now_tv.tv_sec);
+			hdr->time_nanosec = htonl(now_tv.tv_usec * 1000);
+			hdr->flow_sequence = htonl(*flows_exp);
+			/* Other fields are left zero */
+			offset = sizeof(*hdr);
+		}
+
+		if (st[i].af != AF_INET)
+			continue;
+		if (direction != 0 && st[i].direction != direction)
+			continue;
+
+		/* Copy/convert only what we can eat */
+		creation = ntohl(st[i].creation) * 1000;
+		if (creation > uptime_ms)
+			creation = uptime_ms; /* Avoid u_int wrap */
+
+		if (st[i].direction == PF_OUT) {
+			memcpy(&src, &st[i].lan, sizeof(src));
+			memcpy(&dst, &st[i].ext, sizeof(dst));
+		} else {
+			memcpy(&src, &st[i].ext, sizeof(src));
+			memcpy(&dst, &st[i].lan, sizeof(dst));
+		}
+
+		flw = (struct NF5_FLOW *)(packet + offset);
+		if (netflow_socket != -1 && st[i].packets[0] != 0) {
+			flw->src_ip = src.addr.v4.s_addr;
+			flw->dest_ip = dst.addr.v4.s_addr;
+			flw->src_port = src.port;
+			flw->dest_port = dst.port;
+			flw->flow_packets = st[i].packets[0];
+			flw->flow_octets = st[i].bytes[0];
+			flw->flow_start = htonl(uptime_ms - creation);
+			flw->flow_finish = htonl(uptime_ms);
+			flw->tcp_flags = 0;
+			flw->protocol = st[i].proto;
+			offset += sizeof(*flw);
+			j++;
+			hdr->flows++;
+		}
+		flw = (struct NF5_FLOW *)(packet + offset);
+		if (netflow_socket != -1 && st[i].packets[1] != 0) {
+			flw->src_ip = dst.addr.v4.s_addr;
+			flw->dest_ip = src.addr.v4.s_addr;
+			flw->src_port = dst.port;
+			flw->dest_port = src.port;
+			flw->flow_packets = st[i].packets[1];
+			flw->flow_octets = st[i].bytes[1];
+			flw->flow_start = htonl(uptime_ms - creation);
+			flw->flow_finish = htonl(uptime_ms);
+			flw->tcp_flags = 0;
+			flw->protocol = st[i].proto;
+			offset += sizeof(*flw);
+			j++;
+			hdr->flows++;
+		}
+		flw = (struct NF5_FLOW *)(packet + offset);
+
+		if (verbose_flag) {
+			packets_out = ntohl(st[i].packets[0]);
+			packets_in = ntohl(st[i].packets[1]);
+			bytes_out = ntohl(st[i].bytes[0]);
+			bytes_in = ntohl(st[i].bytes[1]);
+
+			creation_tt = now - (creation / 1000);
+			localtime_r(&creation_tt, &creation_tm);
+			strftime(creation_s, sizeof(creation_s), 
+			    "%Y-%m-%dT%H:%M:%S", &creation_tm);
+
+			format_pf_host(src_s, sizeof(src_s), &src, st[i].af);
+			format_pf_host(dst_s, sizeof(dst_s), &dst, st[i].af);
+			inet_ntop(st[i].af, &st[i].rt_addr, rt_s, sizeof(rt_s));
+
+			if (st[i].proto == IPPROTO_TCP || 
+			    st[i].proto == IPPROTO_UDP) {
+				snprintf(pbuf, sizeof(pbuf), ":%d", 
+				    ntohs(src.port));
+				strlcat(src_s, pbuf, sizeof(src_s));
+				snprintf(pbuf, sizeof(pbuf), ":%d", 
+				    ntohs(dst.port));
+				strlcat(dst_s, pbuf, sizeof(dst_s));
+			}
+
+			syslog(LOG_DEBUG, "IFACE %s", st[i].ifname); 
+			syslog(LOG_DEBUG, "GWY %s", rt_s); 
+			syslog(LOG_DEBUG, "FLOW proto %d direction %d", 
+			    st[i].proto, st[i].direction);
+			syslog(LOG_DEBUG, "\tstart %s(%u) finish %s(%u)",
+			    creation_s, uptime_ms - creation, 
+			    now_s, uptime_ms);
+			syslog(LOG_DEBUG, "\t%s -> %s %d bytes %d packets",
+			    src_s, dst_s, bytes_out, packets_out);
+			syslog(LOG_DEBUG, "\t%s -> %s %d bytes %d packets",
+			    dst_s, src_s, bytes_in, packets_in);
+		}
+	}
+	/* Send any leftovers */
+	if (netflow_socket != -1 && j != 0) {
+		if (verbose_flag) {
+			syslog(LOG_DEBUG, "Sending flow packet len = %d",
+			    offset);
+		}
+		hdr->flows = htons(hdr->flows);
+		errsz = sizeof(err);
+		getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
+		    &err, &errsz); /* Clear ICMP errors */
+		if (send(netflow_socket, packet, (size_t)offset, 0) == -1) {
+			syslog(LOG_DEBUG, "send: %s", strerror(errno));
+			return -1;
+		}
+		num_packets++;
+	}
+
+	return (ntohs(hdr->flows));
+}
+
+/*
+ * Per-packet callback function from libpcap. 
+ */
+static void
+packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr, 
+    const u_char *pkt)
+{
+	const struct pfsync_header *ph = (const struct pfsync_header *)pkt;
+	const struct _PFSYNC_STATE *st;
+	int r = 0;
+
+	if (phdr->caplen < PFSYNC_HDRLEN) {
+		syslog(LOG_WARNING, "Runt pfsync packet header");
+		return;
+	}
+	if (ph->version != _PFSYNC_VER) {
+		syslog(LOG_WARNING, "Unsupported pfsync version %d, exiting",
+		    ph->version);
+		exit(1);
+	}
+	if (ph->count == 0) {
+		syslog(LOG_WARNING, "Empty pfsync packet");
+		return;
+	}
+	/* Skip non-delete messages */
+	if (ph->action != PFSYNC_ACT_DEL)
+		return;
+	if (sizeof(*ph) + (sizeof(*st) * ph->count) > phdr->caplen) {
+		syslog(LOG_WARNING, "Runt pfsync packet");
+		return;
+	}
+
+	st = (const struct _PFSYNC_STATE *)((const u_int8_t *)ph + sizeof(*ph));
+
+	switch (export_version) {
+	case 1:
+		r = send_netflow_v1(st, ph->count, &flows_exported);
+		break;
+	case 5:
+		r = send_netflow_v5(st, ph->count, &flows_exported);
+		break;
+	default:
+		/* should never reach this point */
+		syslog(LOG_DEBUG, "Invalid netflow version, exiting");
+		exit(1);
+	}
+
+	if (r > 0) {
+		flows_exported += r;
+		if (verbose_flag)
+			syslog(LOG_DEBUG, "flows_exported = %d", flows_exported);
 	}
 }
 
@@ -563,7 +723,7 @@ main(int argc, char **argv)
 	dontfork_flag = 0;
 	memset(&dest, '\0', sizeof(dest));
 	destlen = 0;
-	while ((ch = getopt(argc, argv, "hdDi:n:r:S:")) != -1) {
+	while ((ch = getopt(argc, argv, "hdDi:n:r:S:v:")) != -1) {
 		switch (ch) {
 		case 'h':
 			usage();
@@ -599,6 +759,7 @@ main(int argc, char **argv)
 			break;
 		case 'n':
 			/* Will exit on failure */
+			destlen = sizeof(dest);
 			parse_hostport(optarg, (struct sockaddr *)&dest,
 			    &destlen);
 			break;
@@ -610,6 +771,16 @@ main(int argc, char **argv)
 			}
 			capfile = optarg;
 			dontfork_flag = 1;
+			break;
+		case 'v':
+			switch((export_version = atoi(optarg))) {
+			case 1:
+			case 5:
+				break;
+			default:
+				fprintf(stderr, "Invalid NetFlow version\n");
+				exit(1);
+			}
 			break;
 		default:
 			fprintf(stderr, "Invalid commandline option.\n");
@@ -629,7 +800,14 @@ main(int argc, char **argv)
 	
 	/* Netflow send socket */
 	if (dest.ss_family != 0)
-		netflow_socket = connsock(&dest, destlen);
+		netflow_socket = connsock((struct sockaddr *)&dest, destlen);
+	else {
+		fprintf(stderr, "No export target defined\n");
+		if (!verbose_flag)
+			exit(1);
+	}
+
+fprintf(stderr, "ZZZZ %d\n", netflow_socket);
 
 	if (dontfork_flag) {
 		if (!verbose_flag)
