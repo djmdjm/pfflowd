@@ -1,4 +1,4 @@
-.\" $Id: pfflowd.8,v 1.1 2003/06/22 03:42:25 djm Exp $
+.\" $Id: pfflowd.8,v 1.2 2003/06/23 09:03:12 djm Exp $
 .\"
 .\" Copyright (c) 2003 Damien Miller.  All rights reserved.
 .\"
@@ -46,6 +46,9 @@ exported to the specified
 .Ar host
 and
 .Ar port .
+.Nm
+will (unless placed in debugging mode) drop privileges and chroot to an
+empty directory upon startup.
 .Pp
 The command-line options are as follows:
 .Bl -tag -width Ds
@@ -89,7 +92,7 @@ Places
 .Nm
 in a debugging mode. This implies the 
 .Fl d
-flag and turns on additional debugging output.
+flag and turns on additional debugging output. Please note that this flag
 .It Fl h
 Displays commandline usage information.
 .El

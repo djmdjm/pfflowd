@@ -1,2 +1,5 @@
+20030623
+ - (djm) Drop privileges and chroot to /var/empty on non-debug startup
+
 20030622
  - (djm) Initial release: pfflowd-0.1

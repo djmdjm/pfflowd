@@ -17,3 +17,7 @@
   - Basic statistics
   - Control program
 
+* More netflow fields
+  - Most require kernel support
+  - May be able to (partially) infer tcp flags
+

@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.2 2003/06/22 03:51:44 djm Exp $ */
+/* $Id: pfflowd.c,v 1.3 2003/06/23 09:03:12 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -39,19 +39,26 @@
 #include <netinet/ip.h>
 #include <arpa/inet.h>
 
-#include <stdio.h>
 #include <errno.h>
-#include <syslog.h>
-#include <string.h>
+#include <pcap.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
 #include <time.h>
 #include <unistd.h>
-#include <signal.h>
-#include <pcap.h>
 #include <util.h>
 
 #define	PROGNAME		"pfflowd"
 #define	PROGVER			"0.1"
+
+#ifndef PRIVDROP_USER
+# define PRIVDROP_USER		"nobody"
+#endif
+
+#define PRIVDROP_CHROOT_DIR	"/var/empty"
 
 #define DEFAULT_INTERFACE	"pfsync0"
 #define LIBPCAP_SNAPLEN		2020	/* Default MTU */
@@ -88,6 +95,51 @@ struct NF1_FLOW {
 #define NF1_MAXFLOWS		24
 #define NF1_MAXPACKET_SIZE	(sizeof(struct NF1_HEADER) + \
 				 (NF1_MAXFLOWS * sizeof(struct NF1_FLOW)))
+
+/* 
+ * Drop privileges and chroot, will exit on failure
+ */
+static void 
+drop_privs(void)
+{
+	struct passwd *pw;
+	
+	if ((pw = getpwnam(PRIVDROP_USER)) == NULL) {
+		syslog(LOG_ERR, "Unable to find unprivileged user \"%s\"", 
+		    PRIVDROP_USER);
+		exit(1);
+	}
+	if (chdir(PRIVDROP_CHROOT_DIR) != 0) {
+		syslog(LOG_ERR, "Unable to chdir to chroot directory \"%s\": %s",
+		    PRIVDROP_CHROOT_DIR, strerror(errno));
+		exit(1);
+	}
+	if (chroot(PRIVDROP_CHROOT_DIR) != 0) {
+		syslog(LOG_ERR, "Unable to chroot to directory \"%s\": %s",
+		    PRIVDROP_CHROOT_DIR, strerror(errno));
+		exit(1);
+	}
+	if (chdir("/") != 0) {
+		syslog(LOG_ERR, "Unable to chdir to chroot root: %s",
+		    strerror(errno));
+		exit(1);
+	}
+	if (setgroups(1, &pw->pw_gid) != 0) {
+		syslog(LOG_ERR, "Couldn't setgroups (%u): %s",
+		    (unsigned int)pw->pw_gid, strerror(errno));
+		exit(1);
+	}
+	if (setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) == -1) {
+		syslog(LOG_ERR, "Couldn't set gid (%u): %s",
+		    (unsigned int)pw->pw_gid, strerror(errno));
+		exit(1);
+	}
+	if (setresuid(pw->pw_uid, pw->pw_uid, pw->pw_uid) == -1) {
+		syslog(LOG_ERR, "Couldn't set uid (%u): %s",
+		    (unsigned int)pw->pw_uid, strerror(errno));
+		exit(1);
+	}
+}
 
 /* Display commandline usage information */
 static void
@@ -518,6 +570,8 @@ main(int argc, char **argv)
 		netflow_socket = connnected_socket(&netflow_dest);
 
 	if (dontfork_flag) {
+		if (!verbose_flag)
+			drop_privs();
 		openlog(__progname, LOG_PID|LOG_PERROR, LOG_DAEMON);
 	} else {	
 		daemon(0, 0);
@@ -527,6 +581,12 @@ main(int argc, char **argv)
 			syslog(LOG_WARNING, "Couldn't write pidfile: %s", 
 			    strerror(errno));
 		}
+
+		/* Close and reopen syslog to pickup chrooted /dev/log */
+		closelog();
+		openlog(__progname, LOG_PID, LOG_DAEMON);
+
+		drop_privs();
 
 		signal(SIGINT, sighand_exit);
 		signal(SIGTERM, sighand_exit);
