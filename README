@@ -18,9 +18,9 @@ or questions, please email me:
 
 PLEASE NOTE: 
 
-1. By default, pfflowd only supports OpenBSD -current as of 2004-02-16. 
-This can be changed by setting the OLD_PFSYNC flag in the Makefile, in 
-which case pfflowd will support only OpenBSD <= 3.4.
+1. By default, pfflowd only supports OpenBSD 3.5. This can be changed by 
+setting the OLD_PFSYNC flag in the Makefile, in which case pfflowd will 
+support only OpenBSD <= 3.4.
 
 2. pfflowd required kernel changes to pffsync committed after OpenBSD 3.3 
 was released. The included pfsync-bidi-3.3.diff should bring this support, 
