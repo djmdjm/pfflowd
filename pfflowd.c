@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.3 2003/06/23 09:03:12 djm Exp $ */
+/* $Id: pfflowd.c,v 1.4 2003/06/23 09:04:18 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -52,7 +52,7 @@
 #include <util.h>
 
 #define	PROGNAME		"pfflowd"
-#define	PROGVER			"0.1"
+#define	PROGVER			"0.2"
 
 #ifndef PRIVDROP_USER
 # define PRIVDROP_USER		"nobody"
