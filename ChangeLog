@@ -1,3 +1,8 @@
+20030815
+ - (djm) Add -n option to usage message. Spotted by jose AT monkey.org
+ - (djm) Document current issues in manpage
+ - (djm) Release pfflowd-0.3
+
 20030623
  - (djm) Drop privileges and chroot to /var/empty on non-debug startup
  - (djm) Release pfflowd-0.2
