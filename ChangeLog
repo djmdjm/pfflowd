@@ -1,3 +1,6 @@
+20040506
+ - (djm) Change license to simplified ISC license, update copyright year
+
 20040415
  - (djm) Fix uninitialised getsockopt len
 
