@@ -13,7 +13,7 @@ doesn't work (or if it breaks your kernel).
 More details about pfflowd's function and usage may be found in the
 supplied manpage, which you can view prior to installation using 
 
-/usr/bin/nroff -c -mandoc pfflowd.8 | less
+/usr/bin/nroff -mandoc pfflowd.8 | less
 
 pfflowd itself is licensed under a two-term BSD license (see the source
 files for details). 
@@ -23,3 +23,4 @@ a security bug, please report it directly by email. If you have any feedback
 or questions, please email me: 
 
 Damien Miller <djm@mindrot.org>
+

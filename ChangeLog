@@ -1,6 +1,7 @@
 20030815
  - (djm) Add -n option to usage message. Spotted by jose AT monkey.org
  - (djm) Document current issues in manpage
+ - (djm) Fix manpage formatting command hint in README
  - (djm) Release pfflowd-0.3
 
 20030623

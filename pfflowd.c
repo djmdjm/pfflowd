@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.4 2003/06/23 09:04:18 djm Exp $ */
+/* $Id: pfflowd.c,v 1.5 2003/08/15 02:08:51 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -147,6 +147,7 @@ usage(void)
 {
 	fprintf(stderr, "Usage: %s [options] [bpf_program]\n", PROGNAME);
 	fprintf(stderr, "  -i interface    Specify interface to listen on (default %s)\n", DEFAULT_INTERFACE);
+	fprintf(stderr, "  -n host:port    Send NetFlow datagrams to host on port (mandatory)\n");
 	fprintf(stderr, "  -r pcap_file    Specify packet capture file to read\n");
 	fprintf(stderr, "  -d              Don't daemonise\n");
 	fprintf(stderr, "  -D              Debug mode: don't daemonise + verbosity\n");
