@@ -4,6 +4,12 @@ pfflowd is a daemon which converts status update packets from pf(4) sent
 over its pfsync(4) interface to Cisco NetFlow(tm) datagrams. These UDP 
 datagrams are then exported to a host of your choice.
 
+PLEASE NOTE: pfflowd required kernel changes to pffsync committed after
+OpenBSD 3.3 was released. The included pfsync-bidi-3.3.diff should
+bring this support, but the diff is *completely* untested and unsupported.
+Please don't complain to me or the OpenBSD mailing lists of this diff 
+doesn't work (or if it breaks your kernel).
+
 More details about pfflowd's function and usage may be found in the
 supplied manpage, which you can view prior to installation using 
 
