@@ -9,6 +9,9 @@ LDFLAGS=-g
 
 CFLAGS=-g -O $(WARNFLAGS)
 
+# Uncomment this if you are using pfflowd on OpenBSD <=3.4
+#CFLAGS+=-DOLD_PFSYNC
+
 TARGETS=pfflowd
 
 all: $(TARGETS)
@@ -21,3 +24,4 @@ clean:
 
 strip:
 	strip $(TARGETS)
+

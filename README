@@ -16,11 +16,17 @@ Please report bugs in softflowd to http://bugzilla.mindrot.org/ If you find
 a security bug, please report it directly by email. If you have any feedback
 or questions, please email me: 
 
-PLEASE NOTE: pfflowd required kernel changes to pffsync committed after
-OpenBSD 3.3 was released. The included pfsync-bidi-3.3.diff should
-bring this support, but the diff is *completely* untested and unsupported.
-Please don't complain to me or the OpenBSD mailing lists of this diff 
-doesn't work (or if it breaks your kernel).
+PLEASE NOTE: 
+
+1. By default, pfflowd only supports OpenBSD -current as of 2004-02-16. 
+This can be changed by setting the OLD_PFSYNC flag in the Makefile, in 
+which case pfflowd will support only OpenBSD <= 3.4.
+
+2. pfflowd required kernel changes to pffsync committed after OpenBSD 3.3 
+was released. The included pfsync-bidi-3.3.diff should bring this support, 
+but the diff is *completely* untested and unsupported.  Please don't 
+complain to me or the OpenBSD mailing lists of this diff doesn't work 
+(or if it breaks your kernel).
 
 Damien Miller <djm@mindrot.org>
 

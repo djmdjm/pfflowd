@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.8 2003/11/09 00:41:45 djm Exp $ */
+/* $Id: pfflowd.c,v 1.9 2004/02/16 03:30:46 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -64,6 +64,14 @@
 
 #define DEFAULT_INTERFACE	"pfsync0"
 #define LIBPCAP_SNAPLEN		2020	/* Default MTU */
+
+#ifdef OLD_PFSYNC
+# define _PFSYNC_STATE		pf_state
+# define _PFSYNC_VER		1
+#else
+# define _PFSYNC_STATE		pfsync_state
+# define _PFSYNC_VER		2
+#endif
 
 static int verbose_flag = 0;		/* Debugging flag */
 static int exit_flag = 0;		/* Signal handler flags */
@@ -282,7 +290,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 
 	ph = (const struct pfsync_header*)pkt;
 
-	if (ph->version != 1) {
+	if (ph->version != _PFSYNC_VER) {
 		syslog(LOG_WARNING, "Unsupported pfsync version %d, skipping",
 		    ph->version);
 		/* XXX - exit */
@@ -303,7 +311,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 
 	hdr = (struct NF1_HEADER *)packet;
 	for(num_packets = offset = j = i = 0; i < ph->count; i++) {
-		const struct pf_state *st;
+		const struct _PFSYNC_STATE *st;
 		struct pf_state_host src, dst;
 		u_int32_t bytes_in, bytes_out;
 		u_int32_t packets_in, packets_out;
@@ -338,7 +346,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			offset = sizeof(*hdr);
 		}
 
-		st = (const struct pf_state *)(pkt + off);
+		st = (const struct _PFSYNC_STATE *)(pkt + off);
 		if (st->af != AF_INET)
 			continue; /* XXX IPv6 support */
 
