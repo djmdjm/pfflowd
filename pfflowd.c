@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.1 2003/06/22 03:42:25 djm Exp $ */
+/* $Id: pfflowd.c,v 1.2 2003/06/22 03:51:44 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/time.h>
@@ -49,6 +49,9 @@
 #include <signal.h>
 #include <pcap.h>
 #include <util.h>
+
+#define	PROGNAME		"pfflowd"
+#define	PROGVER			"0.1"
 
 #define DEFAULT_INTERFACE	"pfsync0"
 #define LIBPCAP_SNAPLEN		2020	/* Default MTU */
@@ -90,7 +93,7 @@ struct NF1_FLOW {
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: pfsyncdump [options] [bpf_program]\n");
+	fprintf(stderr, "Usage: %s [options] [bpf_program]\n", PROGNAME);
 	fprintf(stderr, "  -i interface    Specify interface to listen on (default %s)\n", DEFAULT_INTERFACE);
 	fprintf(stderr, "  -r pcap_file    Specify packet capture file to read\n");
 	fprintf(stderr, "  -d              Don't daemonise\n");
