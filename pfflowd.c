@@ -22,9 +22,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.7 2003/11/09 00:39:27 djm Exp $ */
+/* $Id: pfflowd.c,v 1.8 2003/11/09 00:41:45 djm Exp $ */
 
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/poll.h>
@@ -474,6 +475,18 @@ setup_packet_capture(struct pcap **pcap, char *dev,
 			exit(1);
 		}
 	}
+#ifdef BIOCLOCK
+	/*
+	 * If we are reading from an device (not a file), then 
+	 * lock the underlying BPF device to prevent changes in the 
+	 * unprivileged child
+	 */
+	if (dev != NULL && ioctl(pcap_fileno(*pcap), BIOCLOCK) < 0) {
+		fprintf(stderr, "ioctl(BIOCLOCK) failed: %s\n",
+		    strerror(errno));
+		exit(1);
+	}
+#endif
 }
 
 static char *
