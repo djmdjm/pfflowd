@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.15 2004/05/06 04:06:45 djm Exp $ */
+/* $Id: pfflowd.c,v 1.16 2004/07/12 04:31:45 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -44,6 +44,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <util.h>
+#include <netdb.h>
 
 #define	PROGNAME		"pfflowd"
 #define	PROGVER			"0.5"
@@ -183,53 +184,63 @@ timeval_sub_ms(struct timeval *t1, struct timeval *t2)
 }
 
 /*
- * Parse IPv4 host:port into sockaddr. Will exit on failure
+ * Parse host:port into sockaddr. Will exit on failure
  */
 static void
-parse_hostport(const char *s, struct sockaddr_in *addr)
+parse_hostport(const char *s, struct sockaddr *addr, socklen_t *len)
 {
-	char *host, *port;
+	char *orig, *host, *port;
+	struct addrinfo hints, *res;
+	int herr;
 
-	if ((host = strdup(s)) == NULL) {
+	if ((host = orig = strdup(s)) == NULL) {
 		fprintf(stderr, "Out of memory\n");
 		exit(1);
 	}
-	if ((port = strchr(host, ':')) == NULL || *(++port) == '\0') {
-		fprintf(stderr, "Invalid -n option.\n");
+	if ((port = strrchr(host, ':')) == NULL ||
+	    *(++port) == '\0' || *host == '\0') {
+		fprintf(stderr, "Invalid -n argument.\n");
 		usage();
 		exit(1);
 	}
 	*(port - 1) = '\0';
-	addr->sin_family = AF_INET;
-	addr->sin_port = atoi(port);
-	if (addr->sin_port <= 0 || addr->sin_port >= 65536) {
-		fprintf(stderr, "Invalid -n port.\n");
-		usage();
+	
+	/* Accept [host]:port for numeric IPv6 addresses */
+	if (*host == '[' && *(port - 2) == ']') {
+		host++;
+		*(port - 2) = '\0';
+	}
+
+	memset(&hints, '\0', sizeof(hints));
+	hints.ai_socktype = SOCK_DGRAM;
+	if ((herr = getaddrinfo(host, port, &hints, &res)) == -1) {
+		fprintf(stderr, "Address lookup failed: %s\n",
+		    gai_strerror(herr));
 		exit(1);
 	}
-	addr->sin_port = htons(addr->sin_port);
-	if (inet_aton(host, &addr->sin_addr) == 0) {
-		fprintf(stderr, "Invalid -n host.\n");
-		usage();
+	if (res == NULL || res->ai_addr == NULL) {
+		fprintf(stderr, "No addresses found for %s:%s\n", host, port);
 		exit(1);
 	}
-	free(host);
+	memcpy(addr, res->ai_addr, res->ai_addrlen);
+	free(orig);
+	*len = res->ai_addrlen;
 }
 
 /*
- * Return a connected PF_INET socket to the specified address
+ * Return a connected socket to the specified address
  */
 static int
-connnected_socket(struct sockaddr_in *addr)
+connsock(struct sockaddr_storage *addr, socklen_t len)
 {
 	int s;
 
-	if ((s = socket(PF_INET, SOCK_DGRAM, 0)) < 0) {
+	if ((s = socket(addr->ss_family, SOCK_DGRAM, 0)) == -1) {
 		fprintf(stderr, "socket() error: %s\n", 
 		    strerror(errno));
 		exit(1);
 	}
-	if (connect(s, (struct sockaddr*)addr, sizeof(*addr)) == -1) {
+	if (connect(s, (struct sockaddr*)addr, len) == -1) {
 		fprintf(stderr, "connect() error: %s\n",
 		    strerror(errno));
 		exit(1);
@@ -452,8 +463,6 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		}
 		num_packets++;
 	}
-
-/*	return (num_packets); */
 }
 
 /*
@@ -546,12 +555,14 @@ main(int argc, char **argv)
 	extern char *__progname;
 	int ch, dontfork_flag, r;
 	pcap_t *pcap = NULL;
-	struct sockaddr_in netflow_dest;
-	
+	struct sockaddr_storage dest;
+	socklen_t destlen;
+
 	bpf_prog = NULL;
 	dev = capfile = NULL;
 	dontfork_flag = 0;
-	memset(&netflow_dest, '\0', sizeof(netflow_dest));
+	memset(&dest, '\0', sizeof(dest));
+	destlen = 0;
 	while ((ch = getopt(argc, argv, "hdDi:n:r:S:")) != -1) {
 		switch (ch) {
 		case 'h':
@@ -588,7 +599,8 @@ main(int argc, char **argv)
 			break;
 		case 'n':
 			/* Will exit on failure */
-			parse_hostport(optarg, &netflow_dest);
+			parse_hostport(optarg, (struct sockaddr *)&dest,
+			    &destlen);
 			break;
 		case 'r':
 			if (capfile != NULL || dev != NULL) {
@@ -616,8 +628,8 @@ main(int argc, char **argv)
 	setup_packet_capture(&pcap, dev, capfile, bpf_prog);
 	
 	/* Netflow send socket */
-	if (netflow_dest.sin_family != 0)
-		netflow_socket = connnected_socket(&netflow_dest);
+	if (dest.ss_family != 0)
+		netflow_socket = connsock(&dest, destlen);
 
 	if (dontfork_flag) {
 		if (!verbose_flag)
