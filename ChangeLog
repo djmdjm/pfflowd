@@ -1,3 +1,6 @@
+20031109
+ - (djm) Lock underlying BPF device using ioctl available in OpenBSD 3.5
+
 20030815
  - (djm) Add -n option to usage message. Spotted by jose AT monkey.org
  - (djm) Document current issues in manpage
