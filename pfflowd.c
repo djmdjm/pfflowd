@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.14 2004/05/06 04:02:22 djm Exp $ */
+/* $Id: pfflowd.c,v 1.15 2004/05/06 04:06:45 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -46,7 +46,7 @@
 #include <util.h>
 
 #define	PROGNAME		"pfflowd"
-#define	PROGVER			"0.3"
+#define	PROGVER			"0.5"
 
 #ifndef PRIVDROP_USER
 # define PRIVDROP_USER		"nobody"
