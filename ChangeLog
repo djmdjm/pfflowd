@@ -1,3 +1,6 @@
+20040415
+ - (djm) Fix uninitialised getsockopt len
+
 20040315
  - (djm) Clear socket errors before send(), stops pfflowd dropping packets 
    when it receives ICMP errors

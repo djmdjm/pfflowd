@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.12 2004/03/15 03:35:47 djm Exp $ */
+/* $Id: pfflowd.c,v 1.13 2004/04/15 00:16:13 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -318,7 +318,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		struct pf_state_host src, dst;
 		u_int32_t bytes_in, bytes_out;
 		u_int32_t packets_in, packets_out;
-		char src_s[64], dst_s[64], pbuf[16], creation_s[64];
+		char src_s[64], dst_s[64], rt_s[64], pbuf[16], creation_s[64];
 		time_t creation_tt;
 		u_int32_t creation;
 		struct tm creation_tm;
@@ -333,6 +333,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 			if (verbose_flag)
 				syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
 			hdr->flows = htons(hdr->flows);
+			errsz = sizeof(err);
 			getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
 			    &err, &errsz); /* Clear ICMP errors */
 			if (send(netflow_socket, packet,
@@ -420,6 +421,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 
 			format_pf_host(src_s, sizeof(src_s), &src, st->af);
 			format_pf_host(dst_s, sizeof(dst_s), &dst, st->af);
+			inet_ntop(st->af, &st->rt_addr, rt_s, sizeof(rt_s));
 
 			if (st->proto == IPPROTO_TCP || 
 			    st->proto == IPPROTO_UDP) {
@@ -431,6 +433,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 				strlcat(dst_s, pbuf, sizeof(dst_s));
 			}
 
+			syslog(LOG_DEBUG, "IFACE %s\n", st->ifname); 
+			syslog(LOG_DEBUG, "GWY %s\n", rt_s); 
 			syslog(LOG_DEBUG, "FLOW proto %d direction %d", 
 			    st->proto, st->direction);
 			syslog(LOG_DEBUG, "\tstart %s(%u) finish %s(%u)",
@@ -447,6 +451,7 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		if (verbose_flag)
 			syslog(LOG_DEBUG, "Sending flow packet len = %d", offset);
 		hdr->flows = htons(hdr->flows);
+		errsz = sizeof(err);
 		getsockopt(netflow_socket, SOL_SOCKET, SO_ERROR,
 		    &err, &errsz); /* Clear ICMP errors */
 		if (send(netflow_socket, packet, (size_t)offset, 0) == -1) {
