@@ -1,4 +1,4 @@
-.\" $Id: pfflowd.8,v 1.4 2003/11/09 00:50:54 djm Exp $
+.\" $Id: pfflowd.8,v 1.5 2004/03/15 03:35:47 djm Exp $
 .\"
 .\" Copyright (c) 2003 Damien Miller.  All rights reserved.
 .\"
@@ -34,6 +34,7 @@
 .Op Fl i Ar interface
 .Op Fl r Ar pcap_file
 .Op Fl n Ar host:port
+.Op Fl S Ar direction
 .Op bpf_program
 .Sh DESCRIPTION
 .Nm
@@ -52,6 +53,21 @@ empty directory upon startup.
 .Pp
 The command-line options are as follows:
 .Bl -tag -width Ds
+.It Fl S Ar direction
+Restrict creation of flow records to states matching 
+.Ar direction,
+which may be 
+.Ar in ,
+.Ar out
+or
+.Ar any
+(default: any).
+This corresponds to the direction specified in the 
+.Xr pf 4
+rule that caused the generation of the state.
+E.g. a "pass in ... keep state" rule corresponds to a 
+.Ar in
+direction.
 .It Fl n Ar host:port
 Specify the 
 .Ar host

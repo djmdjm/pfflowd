@@ -22,7 +22,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* $Id: pfflowd.c,v 1.11 2004/03/15 00:53:31 djm Exp $ */
+/* $Id: pfflowd.c,v 1.12 2004/03/15 03:35:47 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -77,6 +77,7 @@ static int verbose_flag = 0;		/* Debugging flag */
 static int exit_flag = 0;		/* Signal handler flags */
 static struct timeval start_time;	/* "System boot" time, for SysUptime */
 static int netflow_socket = -1;
+static int direction = 0;
 
 /*
  * This is the Cisco Netflow(tm) version 1 packet format
@@ -159,6 +160,7 @@ usage(void)
 	fprintf(stderr, "  -i interface    Specify interface to listen on (default %s)\n", DEFAULT_INTERFACE);
 	fprintf(stderr, "  -n host:port    Send NetFlow datagrams to host on port (mandatory)\n");
 	fprintf(stderr, "  -r pcap_file    Specify packet capture file to read\n");
+	fprintf(stderr, "  -S direction    Generation flows for \"in\" or \"out\" bound states (default any)\n");
 	fprintf(stderr, "  -d              Don't daemonise\n");
 	fprintf(stderr, "  -D              Debug mode: don't daemonise + verbosity\n");
 	fprintf(stderr, "  -h              Display this help\n");
@@ -355,7 +357,8 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 		st = (const struct _PFSYNC_STATE *)(pkt + off);
 		if (st->af != AF_INET)
 			continue; /* XXX IPv6 support */
-
+		if (direction != 0 && st->direction != direction)
+			continue;
 		/* Copy/convert only what we can eat */
 		creation = ntohl(st->creation) * 1000;
 		if (creation > uptime_ms)
@@ -552,9 +555,24 @@ main(int argc, char **argv)
 	dev = capfile = NULL;
 	dontfork_flag = 0;
 	memset(&netflow_dest, '\0', sizeof(netflow_dest));
-	while ((ch = getopt(argc, argv, "hdDi:n:r:")) != -1) {
+	while ((ch = getopt(argc, argv, "hdDi:n:r:S:")) != -1) {
 		switch (ch) {
 		case 'h':
+			usage();
+			return (0);
+		case 'S':
+			if (strcasecmp(optarg, "any") == 0) {
+				direction = 0;
+				break;
+			}
+			if (strcasecmp(optarg, "in") == 0) {
+				direction = PF_IN;
+				break;
+			}
+			if (strcasecmp(optarg, "out") == 0) {
+				direction = PF_OUT;
+				break;
+			}
 			usage();
 			return (0);
 		case 'D':

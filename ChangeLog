@@ -3,6 +3,7 @@
    when it receives ICMP errors
  - (djm) Fix flow_start and flow_finish computation. These should be 
    relative to SysUptime, not epoch. Spotted by Niels Provos
+ - (djm) Add basic filtering on state direction
 
 20040216
  - (djm) Make this work with -current pfsync
