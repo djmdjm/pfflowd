@@ -1,6 +1,7 @@
 20040712
  - (djm) Import af-independent host/port parsing code from softflowd, allowing
    IPv6 flow export
+ - (djm) Just use pcap_loop instead of our complicated main loop
 
 20040506
  - (djm) Change license to simplified ISC license, update copyright year

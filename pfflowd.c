@@ -14,13 +14,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.16 2004/07/12 04:31:45 djm Exp $ */
+/* $Id: pfflowd.c,v 1.17 2004/07/12 04:34:27 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/socket.h>
-#include <sys/poll.h>
 
 #include <net/if.h>
 #include <net/bpf.h>
@@ -28,8 +27,6 @@
 #include <net/if_pfsync.h>
 
 #include <netinet/in.h>
-#include <netinet/in_systm.h>
-#include <netinet/ip.h>
 #include <arpa/inet.h>
 
 #include <errno.h>
@@ -67,7 +64,6 @@
 #endif
 
 static int verbose_flag = 0;		/* Debugging flag */
-static int exit_flag = 0;		/* Signal handler flags */
 static struct timeval start_time;	/* "System boot" time, for SysUptime */
 static int netflow_socket = -1;
 static int direction = 0;
@@ -163,7 +159,11 @@ usage(void)
 /* Signal handlers */
 static void sighand_exit(int signum)
 {
-	exit_flag = signum;
+	struct syslog_data sd = SYSLOG_DATA_INIT;
+
+	syslog_r(LOG_INFO, &sd, "%s exiting on signal %d", PROGNAME, signum);
+
+	_exit(0);
 }
 
 /*
@@ -659,44 +659,15 @@ main(int argc, char **argv)
 
 	/* Main processing loop */
 	gettimeofday(&start_time, NULL);
-	for(;;) {
-		struct pollfd pl[1];
 
-		if (exit_flag) {
-			syslog(LOG_NOTICE, "Exiting on signal %d", exit_flag);
-			exit(0);
-		}
-
-		/*
-		 * Silly libpcap's timeout function doesn't work, so we
-		 * do it here (only if we are reading live)
-		 */
-		r = 0;
-		if (capfile == NULL) {
-			memset(pl, '\0', sizeof(pl));
-			pl[0].events = POLLIN|POLLERR|POLLHUP;
-			pl[0].fd = pcap_fileno(pcap);
-			if (poll(pl, 1, -1) == -1) {
-				if (errno == EINTR)
-					continue;
-				syslog(LOG_ERR, "poll: %s", strerror(errno));
-				exit(1);
-			}
-			/* Shouldn't happen unless we specify a timeout */
-			if (pl[0].revents == 0)
-				continue;
-		}
-
-		r = pcap_dispatch(pcap, 1024, packet_cb, NULL);
-		if (r == -1) {
-			syslog(LOG_ERR, "pcap_dispatch: %s", pcap_geterr(pcap));
-			exit(1);
-		} else if (r == 0) {
-			syslog(LOG_NOTICE, "Exiting on pcap EOF");
-			exit(0);
-		}
+	r = pcap_loop(pcap, -1, packet_cb, NULL);
+	if (r == -1) {
+		syslog(LOG_ERR, "pcap_dispatch: %s", pcap_geterr(pcap));
+		exit(1);
 	}
 
-	/* NOTREACHED */
-	exit(1);
+	if (r == 0 && capfile == NULL)
+		syslog(LOG_NOTICE, "Exiting on pcap EOF");
+
+	exit(0);
 }
