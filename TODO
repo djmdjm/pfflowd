@@ -1,0 +1,19 @@
+* Testing, testing, testing
+
+* Allow limiting of which "keep state" rules generate netflow record
+  - One way: lookup rule label and allow generation of flow records for
+    states whose labels match
+    - What to do if ruleset changes under us?
+
+* sflow export (www.sflow.org)
+
+* IPv6 export support
+  - Needs sflow, as Netflow doesn't do IPv6
+
+* Cleanup of code
+  - Kill globals in favour of ctxt
+
+* Import features from softflowd
+  - Basic statistics
+  - Control program
+
