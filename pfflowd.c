@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.18 2004/09/06 12:25:57 djm Exp $ */
+/* $Id: pfflowd.c,v 1.19 2005/08/13 11:54:20 djm Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -806,8 +806,6 @@ main(int argc, char **argv)
 		if (!verbose_flag)
 			exit(1);
 	}
-
-fprintf(stderr, "ZZZZ %d\n", netflow_socket);
 
 	if (dontfork_flag) {
 		if (!verbose_flag)
