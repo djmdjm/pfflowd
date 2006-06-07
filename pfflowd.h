@@ -21,7 +21,7 @@
 #define PROGVER                 "0.6"
 
 #ifndef PRIVDROP_USER
-# define PRIVDROP_USER          "nobody"
+# define PRIVDROP_USER          "_pfflowd"
 #endif   
 
 #define PRIVDROP_CHROOT_DIR     "/var/empty"
@@ -29,13 +29,7 @@
 #define DEFAULT_INTERFACE       "pfsync0"
 #define LIBPCAP_SNAPLEN         2020    /* Default MTU */
  
-#ifdef OLD_PFSYNC
-# define _PFSYNC_STATE          pf_state   
-# define _PFSYNC_VER            1
-#else
-# define _PFSYNC_STATE          pfsync_state
-# define _PFSYNC_VER            2
-#endif
+#define _PFSYNC_VER            3
 
 /*
  * This is the Cisco Netflow(tm) version 1 packet format
