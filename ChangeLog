@@ -1,4 +1,5 @@
 20060707
+ - (djm) Mention that this version only supports pfsync(8) v.3
  - (djm) Release pfflowd-0.7
 
 20060607
