@@ -1,4 +1,4 @@
-.\" $Id: pfflowd.8,v 1.6 2004/09/06 12:25:57 djm Exp $
+.\" $Id: pfflowd.8,v 1.7 2006/07/07 08:44:19 djm Exp $
 .\"
 .\" Copyright (c) 2003 Damien Miller.  All rights reserved.
 .\"
@@ -141,8 +141,18 @@ argument in pf.conf. This argument is available in
 .Ox 3.5
 and later.
 .Pp
-Flows over 2^31 bytes will be incorrectly accounted as the in-kernel byte 
-counter will wrap around.
+.Nm
+works round the 32-bit limit of packet and byte counters in the NetFlow
+v.1 and v.5 protocols by sending multiple flows in cases where a counter
+has exceeded 2^32.
+For instance,
+.Nm
+will generate three NetFlow packets for a 10 gigabyte flow that has
+been recorded by
+.Xr pfsync 4
+(2 x 4GB flows and 1 x 2GB flow).
+In these cases, any packet or byte counter that does not exceed 2^32
+will be zero in all but the first packet.
 .Pp
 .Nm
 does not try to avoid generating NetFlow packets for flows resulting from

@@ -1,5 +1,6 @@
 20060707
  - (djm) Mention that this version only supports pfsync(8) v.3
+ - (djm) Describe workaround for 32-bit NetFlow v.1 and v.5 counters
  - (djm) Release pfflowd-0.7
 
 20060607
