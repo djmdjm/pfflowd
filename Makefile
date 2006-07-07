@@ -4,13 +4,10 @@ WARNFLAGS=\
 	-Wpointer-arith -Wshadow -Wuninitialized -Wcast-align \
 	-Wcast-qual -WformatC=2 -Wformat-nonliteral -Wunused
 
-LIBS=-lpcap -lutil #-lefence
+LIBS=-lpcap -lutil
 LDFLAGS=-g
 
 CFLAGS=-g -O $(WARNFLAGS)
-
-# Uncomment this if you are using pfflowd on OpenBSD <= 3.4
-#CFLAGS+=-DOLD_PFSYNC
 
 TARGETS=pfflowd
 

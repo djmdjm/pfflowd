@@ -1,3 +1,6 @@
+20060707
+ - (djm) Release pfflowd-0.7
+
 20060607
  - (msf) add support for _PFSYNC_VER 3 by handling u_int64_t packets
    and bytes counters. Remove support for older versions of PFSYNC.
