@@ -1,4 +1,4 @@
-.\" $Id: pfflowd.8,v 1.7 2006/07/07 08:44:19 djm Exp $
+.\" $Id: pfflowd.8,v 1.8 2006/07/07 08:45:01 djm Exp $
 .\"
 .\" Copyright (c) 2003 Damien Miller.  All rights reserved.
 .\"
@@ -43,7 +43,7 @@ is a daemon which converts status update packets from
 .Xr pf 4
 sent over its
 .Xr pfsync 4
-interface to Cisco NetFlow(tm) datagrams. These UDP datagrams are then 
+interface to Cisco NetFlow(tm) datagrams. These UDP datagrams are then
 exported to the specified
 .Ar host
 and
@@ -55,24 +55,24 @@ empty directory upon startup.
 The command-line options are as follows:
 .Bl -tag -width Ds
 .It Fl S Ar direction
-Restrict creation of flow records to states matching 
+Restrict creation of flow records to states matching
 .Ar direction,
-which may be 
+which may be
 .Ar in ,
 .Ar out
 or
 .Ar any
 (default: any).
-This corresponds to the direction specified in the 
+This corresponds to the direction specified in the
 .Xr pf 4
 rule that caused the generation of the state.
-E.g. a "pass in ... keep state" rule corresponds to a 
+E.g. a "pass in ... keep state" rule corresponds to a
 .Ar in
 direction.
 .It Fl n Ar host:port
-Specify the 
+Specify the
 .Ar host
-(an IP address in dotted-quad format) and 
+(an IP address in dotted-quad format) and
 .Ar port
 that the accounting datagrams are to be sent to. Note that it is possible
 to run this daemon without specifying a host and port to export flows to,
@@ -81,63 +81,63 @@ but this doesn't make much sense unless one is running in debug mode.
 Specify a network interface on which to listen for traffic.
 .Fl i
 or the
-.Fl r 
-As it only makes sense to listen on 
+.Fl r
+As it only makes sense to listen on
 .Xr pfsync 4
 interfaces, this argument is optional (defaulting to pfsync0).
 .It Fl r Ar pcap_file
 Specify that
 .Nm
-should read from a 
+should read from a
 .Xr pcap 3
-packet capture (such as one created with the 
+packet capture (such as one created with the
 .Fl w
-option of 
+option of
 .Xr tcpdump 8 )
-file rather than a network interface. 
+file rather than a network interface.
 .Nm
 will process the whole capture file and then exit. One would normally use
-the 
+the
 .Fl d
 flag to keep the process in the foreground in this mode.
 .It Fl v Ar netflow_version
-Select which version of the NetFlow protocol that 
+Select which version of the NetFlow protocol that
 .Nm
 should send.
 Currently,
 .Nm
 support NetFlow versions
 .Ar 1
-and 
+and
 .Ar 5 .
 The default is to send NetFlow v.5 datagrams.
 .It Fl d
-Specify that 
+Specify that
 .Nm
 should not fork and daemonise itself.
 .It Fl D
 Places
 .Nm
-in a debugging mode. This implies the 
+in a debugging mode. This implies the
 .Fl d
 flag and turns on additional debugging output. Please note that this flag
 .It Fl h
 Displays commandline usage information.
 .El
 .Pp
-Any further commandline arguments will be concatenated together and 
-applied as a 
+Any further commandline arguments will be concatenated together and
+applied as a
 .Xr bpf 4
-packet filter. This filter will cause 
+packet filter. This filter will cause
 .Nm
 to ignore the specified traffic.
 .Sh BUGS
 A bpf program specified on the commandline does not do what one may expect
-(i.e. select traffic for accounting). 
+(i.e. select traffic for accounting).
 Rather, it doesn't do much at all.
-To select traffic for accounting, use the 
+To select traffic for accounting, use the
 .Ar no-sync
-argument in pf.conf. This argument is available in  
+argument in pf.conf. This argument is available in
 .Ox 3.5
 and later.
 .Pp
