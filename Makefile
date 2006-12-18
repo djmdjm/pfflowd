@@ -4,7 +4,7 @@ WARNFLAGS=\
 	-Wpointer-arith -Wshadow -Wuninitialized -Wcast-align \
 	-Wcast-qual -WformatC=2 -Wformat-nonliteral -Wunused
 
-LIBS=-lpcap -lutil
+LIBS=-lpcap -lutil -levent
 LDFLAGS=-g
 
 CFLAGS=-g -O $(WARNFLAGS)

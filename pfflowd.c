@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/* $Id: pfflowd.c,v 1.20 2006/06/07 10:58:37 msf Exp $ */
+/* $Id: pfflowd.c,v 1.21 2006/12/18 06:56:57 msf Exp $ */
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -30,6 +30,7 @@
 #include <arpa/inet.h>
 
 #include <errno.h>
+#include <event.h>
 #include <pcap.h>
 #include <pwd.h>
 #include <grp.h>
@@ -44,7 +45,9 @@
 #include <netdb.h>
 #include "pfflowd.h"
 
-static int verbose_flag = 0;            /* Debugging flag */
+extern char	*__progname;
+struct event recv_ev, sigint_ev, sigterm_ev;
+static int verbose_flag = 0;	        /* Debugging flag */
 static struct timeval start_time;       /* "System boot" time, for SysUptime */
 static int netflow_socket = -1;		/* Send socket */
 static int direction = 0;		/* Filter for direction */
@@ -100,7 +103,7 @@ drop_privs(void)
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: %s [options] [bpf_program]\n", PROGNAME);
+	fprintf(stderr, "Usage: %s [options] [bpf_program]\n", __progname);
 	fprintf(stderr, "  -i interface    Specify interface to listen on (default %s)\n", DEFAULT_INTERFACE);
 	fprintf(stderr, "  -n host:port    Send NetFlow datagrams to host on port (mandatory)\n");
 	fprintf(stderr, "  -r pcap_file    Specify packet capture file to read\n");
@@ -113,11 +116,13 @@ usage(void)
 }
 
 /* Signal handlers */
-static void sighand_exit(int signum)
+static void 
+sighand_exit(int sig, short event, void *arg)
 {
 	struct syslog_data sd = SYSLOG_DATA_INIT;
 
-	syslog_r(LOG_INFO, &sd, "%s exiting on signal %d", PROGNAME, signum);
+	syslog_r(LOG_INFO, &sd, "%s exiting on signal %d", __progname, 
+	    sig);
 
 	_exit(0);
 }
@@ -683,6 +688,18 @@ packet_cb(u_char *user_data, const struct pcap_pkthdr* phdr,
 	}
 }
 
+static void
+pcap_cb(int fd, short event, void *arg)
+{
+	struct pfflowd_config  	*cfg = (struct pfflowd_config *)arg;
+
+	event_add(&recv_ev, NULL);
+	if (pcap_dispatch(cfg->p, 0, (void *)packet_cb, (void *)cfg) < 0) {
+	                syslog(LOG_ERR, "pcap_dispatch: %s", 
+			    pcap_geterr(cfg->p));
+	}
+}
+
 /*
  * Open either interface specified by "dev" or pcap file specified by 
  * "capfile". Optionally apply filter "bpf_prog"
@@ -722,6 +739,7 @@ setup_packet_capture(struct pcap **pcap, char *dev,
 			exit(1);
 		}
 	}
+
 #ifdef BIOCLOCK
 	/*
 	 * If we are reading from an device (not a file), then 
@@ -767,12 +785,11 @@ argv_join(int argc, char **argv)
 int
 main(int argc, char **argv)
 {
+	struct pfflowd_config cfg; 
 	char *dev, *capfile, *bpf_prog;
 	extern char *optarg;
 	extern int optind;
-	extern char *__progname;
-	int ch, dontfork_flag, r;
-	pcap_t *pcap = NULL;
+	int ch, dontfork_flag, p_fd;
 	struct sockaddr_storage dest;
 	socklen_t destlen;
 
@@ -853,8 +870,10 @@ main(int argc, char **argv)
 	/* join remaining arguments (if any) into bpf program */
 	bpf_prog = argv_join(argc - optind, argv + optind);
 
+	event_init();
+	
 	/* Will exit on failure */
-	setup_packet_capture(&pcap, dev, capfile, bpf_prog);
+	setup_packet_capture(&cfg.p, dev, capfile, bpf_prog);
 	
 	/* Netflow send socket */
 	if (dest.ss_family != 0)
@@ -884,8 +903,10 @@ main(int argc, char **argv)
 
 		drop_privs();
 
-		signal(SIGINT, sighand_exit);
-		signal(SIGTERM, sighand_exit);
+		signal_set(&sigint_ev, SIGINT, sighand_exit, NULL);
+		signal_set(&sigterm_ev, SIGTERM, sighand_exit, NULL);
+		signal_add(&sigint_ev, NULL);
+		signal_add(&sigterm_ev, NULL);
 	}
 
 	if (dev != NULL)
@@ -894,14 +915,12 @@ main(int argc, char **argv)
 	/* Main processing loop */
 	gettimeofday(&start_time, NULL);
 
-	r = pcap_loop(pcap, -1, packet_cb, NULL);
-	if (r == -1) {
-		syslog(LOG_ERR, "pcap_dispatch: %s", pcap_geterr(pcap));
-		exit(1);
-	}
+	p_fd = pcap_fileno(cfg.p);
 
-	if (r == 0 && capfile == NULL)
-		syslog(LOG_NOTICE, "Exiting on pcap EOF");
+	event_set(&recv_ev, p_fd, EV_READ, pcap_cb, (void *) &cfg);
+	event_add(&recv_ev, NULL);
+
+	event_dispatch();
 
 	exit(0);
 }

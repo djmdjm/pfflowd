@@ -17,7 +17,6 @@
 #ifndef _PFFLOWD_H
 #define _PFFLOWD_H
 
-#define PROGNAME                "pfflowd"
 #define PROGVER                 "0.7"
 
 #ifndef PRIVDROP_USER
@@ -87,5 +86,9 @@ struct NF5_FLOW {
 #define NF5_MAXFLOWS    30
 #define NF5_MAXPACKET_SIZE (sizeof(struct NF5_HEADER) + \
              (NF5_MAXFLOWS * sizeof(struct NF5_FLOW)))
+
+struct pfflowd_config {
+	pcap_t		*p;
+};
 
 #endif /* _PFFLOWD_H */
